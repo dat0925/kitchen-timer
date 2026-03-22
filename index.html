@@ -115,13 +115,11 @@
     }
     .card.running .bg-bar{opacity:.1;}
 
-    /* 残り時間をメーターエリア内に表示 */
+    /* 残り時間を補助ボタン左にインライン表示 */
     .disp-overlay{
-      position:absolute;right:.75rem;bottom:.35rem;
-      z-index:2;pointer-events:none;
-      font-size:var(--fs-sm);font-weight:300;
+      font-size:var(--fs-xs);font-weight:300;
       color:var(--sub);letter-spacing:-.01em;
-      line-height:1;
+      white-space:nowrap;flex-shrink:0;
     }
     .disp-overlay.done{color:var(--red);font-weight:500;}
 
@@ -216,18 +214,18 @@
     .unit{display:flex;align-items:flex-end;gap:.12rem;}
     .unit-wrap{display:flex;flex-direction:column;align-items:center;}
     .unit-lbl{font-size:var(--fs-lbl);color:var(--mute);letter-spacing:.1em;margin-bottom:.06rem;}
-    /* num-box: 44px × 1.1 = 48px, height: 40px × 1.1 = 44px */
+    /* num-box: width 48px, height 44px × 1.3 = 57px */
     .num-box{
-      width:48px;height:44px;
+      width:48px;height:57px;
       background:#fff;border:1px solid var(--border);
       display:flex;align-items:center;justify-content:center;
       font-size:var(--fs-num);font-weight:300;letter-spacing:-.02em;
     }
     .num-box.locked{opacity:.4;}
-    /* spin-col: 幅30px × 1.1 = 33px, 高さ num-box と同じ 44px、下端揃え */
+    /* spin-col: 幅33px × 1.2 = 40px, 高さ 57px */
     .spin-col{
       display:flex;flex-direction:column;
-      width:33px;height:44px;flex-shrink:0;
+      width:40px;height:57px;flex-shrink:0;
     }
     .spin-btn{
       flex:1;width:100%;background:var(--bg);
@@ -241,10 +239,22 @@
     .spin-btn.dn{border-top:none;border-radius:0 0 2px 2px;}
     .spin-btn:active{background:var(--text);color:#fff;}
     .spin-btn:disabled{opacity:.28;cursor:not-allowed;}
-    .sep{
-      font-size:var(--fs-num);font-weight:300;color:var(--border2);
-      line-height:44px;align-self:flex-end;padding:0 .04rem;
+    .unit-lbl-inline{
+      font-size:var(--fs-lbl);color:var(--mute);letter-spacing:.08em;
+      padding-bottom:.3rem;
     }
+
+    /* ── Add button (topbar) ── */
+    .add-btn{
+      font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-xs);
+      background:var(--text);color:#fff;
+      border:none;border-radius:2px;
+      padding:.3rem .72rem;
+      cursor:pointer;letter-spacing:.05em;
+      transition:background .15s;white-space:nowrap;flex-shrink:0;
+    }
+    .add-btn:hover{background:var(--brown);}
+    .add-btn:disabled{opacity:.4;cursor:not-allowed;}
 
     /* ── Empty state (追加ボタンここに) ── */
     #empty{
@@ -280,8 +290,11 @@
       #grid{grid-template-columns:1fr;}
       .card{border-right:none;border-bottom:2px solid var(--border);}
       .num-box{width:52px;}
-      .spin-col{width:36px;}
-      .setter{gap:.28rem;}
+      .spin-col{width:43px;}
+      .setter{gap:.2rem;}
+      /* ctrl上・setter下の縦並びで右端マージンを左端と揃える */
+      .setter-row{flex-direction:column;align-items:flex-start;gap:.4rem;}
+      .ctrl{flex-direction:row;gap:.3rem;}
     }
   </style>
 </head>
@@ -290,6 +303,7 @@
 <div class="topbar">
   <h1>6タイマー</h1>
   <span class="count" id="cnt">0 / 6</span>
+  <button class="add-btn" id="addBtn" onclick="createTimer()">＋ 追加</button>
   <div class="sort-btns">
     <button class="sort-btn active" id="sortCreated" onclick="doSort('created')">作成順</button>
     <button class="sort-btn" id="sortRemain" onclick="doSort('remain')">残り時間順</button>
@@ -464,25 +478,23 @@ function buildCard(t){
       <div class="bg-bar" id="bgbar-${t.id}"></div>
       <div class="name-row">
         <span class="drag-handle">⠿</span>
-        <input class="lbl-input" id="lbl-${t.id}" type="text" placeholder="何のタイマー？" maxlength="20"
+        <input class="lbl-input" id="lbl-${t.id}" type="text" placeholder="タイマー名を入力する" maxlength="20"
           oninput="timers.find(x=>x.id==${t.id}).label=this.value">
+        <div class="disp-overlay" id="d-${t.id}">設定: 3分</div>
         <button class="chips-toggle" id="ctoggle-${t.id}" onclick="toggleChips(${t.id})">補助</button>
         <button class="rm-btn" onclick="removeTimer(${t.id})">✕</button>
       </div>
       <div class="chips-area" id="chips-${t.id}">
         <div class="chips-scroll"><div class="chips-inner">${chips}</div></div>
       </div>
-      <div class="disp-overlay" id="d-${t.id}">設定: 3分</div>
       <button class="sound-stop" id="sstop-${t.id}" onclick="stopSound(${t.id})">⏹ 停止</button>
     </div>
     <div class="card-body">
       <div class="setter-row">
         <div class="ctrl" id="ctrl-${t.id}"></div>
         <div class="setter">
-          ${mkSpinner(t.id,'h','時間',t.h)}
-          <span class="sep">:</span>
+          ${mkSpinner(t.id,'h','時',t.h)}
           ${mkSpinner(t.id,'m','分',t.m)}
-          <span class="sep">:</span>
           ${mkSpinner(t.id,'s','秒',t.s)}
         </div>
       </div>
@@ -501,14 +513,12 @@ function buildCard(t){
 /* ── Spinner ── */
 function mkSpinner(id,unit,label,val){
   return `<div class="unit">
-    <div class="unit-wrap">
-      <div class="unit-lbl">${label}</div>
-      <div class="num-box" id="n-${unit}-${id}">${pad(val)}</div>
-    </div>
+    <div class="num-box" id="n-${unit}-${id}">${pad(val)}</div>
     <div class="spin-col">
       <button class="spin-btn up" id="up-${unit}-${id}">▲</button>
       <button class="spin-btn dn" id="dn-${unit}-${id}">▼</button>
     </div>
+    <span class="unit-lbl-inline">${label}</span>
   </div>`;
 }
 function spin(id,unit,delta){
@@ -702,9 +712,11 @@ function refreshUI(){
   document.getElementById('cnt').textContent=`${n} / ${MAX}`;
   const em=document.getElementById('empty');
   if(em)em.style.display=n===0?'flex':'none';
+  const addBtn=document.getElementById('addBtn');
+  if(addBtn)addBtn.disabled=n>=MAX;
 }
 
-refreshUI();
+createTimer();
 </script>
 </body>
 </html>

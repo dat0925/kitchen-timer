@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>6タイマー</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&family=Noto+Serif+JP:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    :root{
+      --bg:#f2ece4;
+      --surface:#faf7f3;
+      --card:#ffffff;
+      --border:#d8d0c4;
+      --border2:#c4bab0;
+      --divider:#e0d8cf;
+      --text:#2e2822;
+      --sub:#6a6258;
+      --mute:#9c9088;
+      --red:#a83228;
+      --beige:#a08870;
+      --brown:#5c4030;
+      --accent-finish:#7a6a5a;
+      /* フォント 1.3倍ベース */
+      --fs-h1:   1.17rem;
+      --fs-base: 1.04rem;
+      --fs-sm:   0.91rem;
+      --fs-xs:   0.78rem;
+      --fs-xxs:  0.715rem;
+      --fs-lbl:  0.624rem;
+      --fs-num:  1.625rem;
+    }
+    html,body{min-height:100%;font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+
+    /* ── Top bar ── */
+    .topbar{
+      display:flex;align-items:center;gap:.5rem;
+      padding:.72rem 1rem;background:var(--surface);
+      border-bottom:2px solid var(--border);
+      position:sticky;top:0;z-index:20;
+    }
+    .topbar h1{font-family:'Noto Serif JP',serif;font-size:var(--fs-h1);font-weight:600;letter-spacing:.07em;flex-shrink:0;}
+    .count{font-size:var(--fs-xs);color:var(--mute);letter-spacing:.04em;flex-shrink:0;}
+    .sort-btns{display:flex;gap:.28rem;align-items:center;margin-left:auto;flex-shrink:0;}
+    .sort-btn{
+      font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-xxs);color:var(--sub);
+      background:transparent;border:1px solid var(--border2);border-radius:2px;
+      padding:.26rem .55rem;cursor:pointer;white-space:nowrap;letter-spacing:.03em;transition:all .12s;
+    }
+    .sort-btn.active{background:var(--text);color:#fff;border-color:var(--text);}
+    .sort-btn:hover:not(.active){background:var(--divider);}
+
+    /* ── Grid ── */
+    #grid{
+      display:grid;
+      grid-template-columns:repeat(2,1fr);
+      gap:0;
+      border-top:1px solid var(--border);
+    }
+
+    /* ── Card ── */
+    .card{
+      background:var(--card);
+      position:relative;
+      animation:cardIn .22s ease both;
+      /* 区切りボーダー */
+      border-right:1px solid var(--border);
+      border-bottom:2px solid var(--border);
+    }
+    .card:nth-child(even){border-right:none;}
+    @keyframes cardIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+    .card.dragging{opacity:.4;}
+    .card.drag-over{outline:2px solid var(--card-accent,var(--text));outline-offset:-2px;z-index:2;}
+
+    /* ── 完了エフェクト ── */
+    .card.finished{
+      animation:shake .4s .05s ease both;
+    }
+    @keyframes shake{
+      0%,100%{transform:translateX(0)}
+      18%{transform:translateX(-6px)}
+      36%{transform:translateX(6px)}
+      54%{transform:translateX(-4px)}
+      72%{transform:translateX(4px)}
+    }
+    /* 上品な完了フラッシュ（温かみある黄土色） */
+    .card.finished .card-label-area::after{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(135deg,rgba(180,150,100,.22),rgba(140,110,70,.14));
+      pointer-events:none;z-index:4;
+      animation:elegantFlash 2.8s ease forwards;
+    }
+    @keyframes elegantFlash{
+      0%  {opacity:1}
+      25% {opacity:.3}
+      50% {opacity:.8}
+      75% {opacity:.2}
+      100%{opacity:0}
+    }
+
+    /* ── ラベルエリア（メーター背景） ── */
+    .card-label-area{
+      position:relative;overflow:hidden;
+      padding:.75rem .9rem .45rem;
+      border-bottom:1px solid var(--divider);
+      min-height:3.8rem;
+    }
+    /* メーター背景バー */
+    .bg-bar{
+      position:absolute;left:0;top:0;bottom:0;width:100%;
+      background:var(--card-accent,var(--text));
+      opacity:.07;pointer-events:none;
+      transform-origin:left;
+      transition:transform .9s linear,background .5s;
+    }
+    .card.running .bg-bar{opacity:.1;}
+
+    /* 残り時間をメーターエリア内に表示 */
+    .disp-overlay{
+      position:absolute;right:.75rem;bottom:.35rem;
+      z-index:2;pointer-events:none;
+      font-size:var(--fs-sm);font-weight:300;
+      color:var(--sub);letter-spacing:-.01em;
+      line-height:1;
+    }
+    .disp-overlay.done{color:var(--red);font-weight:500;}
+
+    /* ストップボタン（音が鳴ってる間） */
+    .sound-stop{
+      position:absolute;left:50%;top:50%;
+      transform:translate(-50%,-50%);
+      z-index:6;
+      background:rgba(46,40,34,.82);color:#fff;
+      border:none;border-radius:3px;
+      padding:.45rem 1rem;
+      font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-xs);
+      font-weight:500;letter-spacing:.06em;cursor:pointer;
+      display:none;backdrop-filter:blur(2px);
+      transition:background .1s;
+      white-space:nowrap;
+    }
+    .sound-stop:active{background:rgba(46,40,34,.95);}
+    .card.sounding .sound-stop{display:flex;align-items:center;gap:.3rem;}
+
+    /* 名前行 */
+    .name-row{position:relative;z-index:1;display:flex;align-items:center;gap:.32rem;margin-bottom:.25rem;}
+    .drag-handle{color:var(--border2);font-size:.9rem;cursor:grab;user-select:none;flex-shrink:0;}
+    .lbl-input{
+      flex:1;min-width:0;
+      font-family:'Noto Serif JP',serif;
+      font-size:var(--fs-base);font-weight:600;color:var(--text);
+      background:transparent;border:none;outline:none;letter-spacing:.04em;
+    }
+    .lbl-input::placeholder{color:var(--mute);font-weight:300;}
+
+    /* 補助ボタン */
+    .chips-toggle{
+      flex-shrink:0;
+      background:transparent;border:1px solid var(--border2);border-radius:2px;
+      cursor:pointer;color:var(--sub);font-size:var(--fs-xxs);
+      font-family:'Noto Sans JP',sans-serif;letter-spacing:.04em;
+      padding:.18rem .44rem;
+      transition:all .12s;touch-action:manipulation;white-space:nowrap;
+    }
+    .chips-toggle.open{background:var(--text);color:#fff;border-color:var(--text);}
+
+    /* 削除ボタン — 目立つように */
+    .rm-btn{
+      flex-shrink:0;
+      width:26px;height:26px;
+      background:var(--divider);
+      border:1px solid var(--border2);border-radius:3px;
+      cursor:pointer;color:var(--sub);
+      display:flex;align-items:center;justify-content:center;
+      font-size:.75rem;font-weight:700;
+      transition:all .12s;touch-action:manipulation;
+    }
+    .rm-btn:active,.rm-btn:hover{background:var(--red);color:#fff;border-color:var(--red);}
+
+    /* 入力補助チップ */
+    .chips-area{display:none;margin-top:.3rem;position:relative;z-index:1;}
+    .chips-area.open{display:block;}
+    .chips-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;}
+    .chips-scroll::-webkit-scrollbar{display:none;}
+    .chips-inner{
+      display:grid;grid-template-rows:repeat(2,auto);
+      grid-auto-flow:column;gap:.18rem;width:max-content;padding-bottom:.06rem;
+    }
+    .chip{
+      font-size:var(--fs-xxs);padding:.14rem .44rem;
+      background:transparent;border:1px solid var(--border2);
+      border-radius:1px;cursor:pointer;color:var(--sub);
+      font-family:'Noto Sans JP',sans-serif;letter-spacing:.03em;
+      transition:all .1s;touch-action:manipulation;white-space:nowrap;
+    }
+    .chip:active,.chip:hover{background:var(--text);color:#fff;border-color:var(--text);}
+
+    /* ── カード下部 ── */
+    .card-body{padding:.6rem .9rem .65rem;}
+    .setter-row{display:flex;align-items:center;gap:.5rem;}
+    .ctrl{display:flex;flex-direction:column;gap:.28rem;flex-shrink:0;}
+    .btn{
+      font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-xs);
+      font-weight:500;border-radius:2px;padding:.38rem .7rem;
+      cursor:pointer;letter-spacing:.05em;border:1px solid transparent;
+      transition:all .12s;touch-action:manipulation;white-space:nowrap;
+    }
+    .btn-p{background:var(--card-accent,var(--text));color:#fff;border-color:var(--card-accent,var(--text));}
+    .btn-p:active{filter:brightness(.85);}
+    .btn-pause{background:var(--beige);color:#fff;border-color:var(--beige);}
+    .btn-g{background:transparent;color:var(--sub);border-color:var(--border2);}
+    .btn-g:active{background:var(--divider);}
+
+    /* ── Spinner: 数字 × 1.1倍、▲▼ × 1.1倍 ── */
+    .setter{display:flex;align-items:flex-end;gap:.22rem;flex:1;}
+    .unit{display:flex;align-items:flex-end;gap:.12rem;}
+    .unit-wrap{display:flex;flex-direction:column;align-items:center;}
+    .unit-lbl{font-size:var(--fs-lbl);color:var(--mute);letter-spacing:.1em;margin-bottom:.06rem;}
+    /* num-box: 44px × 1.1 = 48px, height: 40px × 1.1 = 44px */
+    .num-box{
+      width:48px;height:44px;
+      background:#fff;border:1px solid var(--border);
+      display:flex;align-items:center;justify-content:center;
+      font-size:var(--fs-num);font-weight:300;letter-spacing:-.02em;
+    }
+    .num-box.locked{opacity:.4;}
+    /* spin-col: 幅30px × 1.1 = 33px, 高さ num-box と同じ 44px、下端揃え */
+    .spin-col{
+      display:flex;flex-direction:column;
+      width:33px;height:44px;flex-shrink:0;
+    }
+    .spin-btn{
+      flex:1;width:100%;background:var(--bg);
+      border:1px solid var(--border);cursor:pointer;
+      color:var(--sub);font-size:var(--fs-lbl);
+      display:flex;align-items:center;justify-content:center;
+      transition:background .1s;touch-action:manipulation;
+      user-select:none;-webkit-user-select:none;
+    }
+    .spin-btn.up{border-bottom:none;border-radius:2px 2px 0 0;}
+    .spin-btn.dn{border-top:none;border-radius:0 0 2px 2px;}
+    .spin-btn:active{background:var(--text);color:#fff;}
+    .spin-btn:disabled{opacity:.28;cursor:not-allowed;}
+    .sep{
+      font-size:var(--fs-num);font-weight:300;color:var(--border2);
+      line-height:44px;align-self:flex-end;padding:0 .04rem;
+    }
+
+    /* ── Empty state (追加ボタンここに) ── */
+    #empty{
+      grid-column:1/-1;background:var(--surface);
+      padding:4rem 2rem;text-align:center;
+      border-bottom:2px solid var(--border);
+    }
+    #empty p{font-size:var(--fs-sm);color:var(--mute);letter-spacing:.06em;margin-bottom:1.2rem;}
+    #emptyAddBtn{
+      display:inline-flex;align-items:center;gap:.3rem;
+      background:var(--text);color:#fff;
+      border:none;border-radius:2px;
+      padding:.55rem 1.4rem;
+      font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-sm);
+      font-weight:400;letter-spacing:.06em;cursor:pointer;
+      transition:background .15s;
+    }
+    #emptyAddBtn:hover{background:var(--brown);}
+
+    /* Toast */
+    .toast{
+      position:fixed;bottom:1.4rem;left:50%;transform:translateX(-50%);
+      background:var(--text);color:#fff;font-size:var(--fs-xs);letter-spacing:.05em;
+      padding:.65rem 1.3rem;border-radius:2px;white-space:nowrap;z-index:200;
+      animation:tin .22s ease both;
+    }
+    @keyframes tin{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+    .toast.out{animation:tout .25s ease forwards;}
+    @keyframes tout{to{opacity:0;transform:translateX(-50%) translateY(10px)}}
+
+    /* スマホ: 1列・横幅いっぱい */
+    @media(max-width:560px){
+      #grid{grid-template-columns:1fr;}
+      .card{border-right:none;border-bottom:2px solid var(--border);}
+      .num-box{width:52px;}
+      .spin-col{width:36px;}
+      .setter{gap:.28rem;}
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>6タイマー</h1>
+  <span class="count" id="cnt">0 / 6</span>
+  <div class="sort-btns">
+    <button class="sort-btn active" id="sortCreated" onclick="doSort('created')">作成順</button>
+    <button class="sort-btn" id="sortRemain" onclick="doSort('remain')">残り時間順</button>
+  </div>
+</div>
+
+<div id="grid">
+  <div id="empty">
+    <p>タイマーをスタートしましょう</p>
+    <button id="emptyAddBtn" onclick="createTimer()">＋ タイマーを追加</button>
+  </div>
+</div>
+
+<script>
+const MAX=6;
+const PRESETS=[
+  'コンロ右','コンロ左','コンロ上','オーブン','パン発酵','蒸し器',
+  'レンジ','茹で卵','パスタ','カレー','白米','味噌汁',
+  'コーンスープ','ラーメン','春雨スープ'
+];
+const ACCENTS=['#5c4033','#3a5a7a','#4a6741','#7a4a3a','#4a4a6a','#5a3a4a'];
+const SOUND_DURATION=20000; // 20秒
+
+let timers=[], nextId=1, sortMode='created';
+let audioCtx=null;
+function getCtx(){
+  if(!audioCtx||audioCtx.state==='closed')
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return audioCtx;
+}
+
+/* ────────────────────────────────────────────────
+   タイマーごとに異なるクラシック風メロディー (6種)
+   Web Audio API (triangle + sine の重ね合わせ)
+──────────────────────────────────────────────── */
+const MELODIES=[
+  // 1: ハ長調アルペジオ（ソナチネ風）
+  [{f:261.6,t:0},{f:329.6,t:.13},{f:392,t:.26},{f:523.2,t:.4},{f:392,t:.58},{f:329.6,t:.7},{f:261.6,t:.82}],
+  // 2: ト長調（バッハのメヌエット風）
+  [{f:392,t:0},{f:440,t:.15},{f:493.9,t:.3},{f:392,t:.45},{f:349.2,t:.6},{f:440,t:.75},{f:392,t:.95}],
+  // 3: イ短調（モーツァルト風）
+  [{f:440,t:0},{f:493.9,t:.12},{f:523.2,t:.24},{f:493.9,t:.38},{f:440,t:.5},{f:392,t:.64},{f:440,t:.82}],
+  // 4: ヘ長調（子守唄風）
+  [{f:349.2,t:0},{f:392,t:.16},{f:440,t:.32},{f:523.2,t:.52},{f:440,t:.7},{f:392,t:.85},{f:349.2,t:1.05}],
+  // 5: ニ長調（ビバルディ風）
+  [{f:293.7,t:0},{f:370,t:.1},{f:440,t:.2},{f:587.3,t:.32},{f:440,t:.46},{f:370,t:.58},{f:293.7,t:.72}],
+  // 6: 変ホ長調（シューマン風）
+  [{f:311.1,t:0},{f:370,t:.14},{f:415.3,t:.28},{f:466.2,t:.44},{f:415.3,t:.6},{f:370,t:.75},{f:311.1,t:.92}],
+];
+
+function playMelody(timerIndex, loop, onStop){
+  try{
+    const ctx=getCtx();
+    const melody=MELODIES[timerIndex % MELODIES.length];
+    const totalLen=melody[melody.length-1].t+.9;
+    let stopped=false;
+    const nodes=[];
+
+    function playOnce(baseTime){
+      melody.forEach(({f,t})=>{
+        if(stopped)return;
+        const o=ctx.createOscillator(),g=ctx.createGain();
+        o.type='triangle';o.frequency.value=f;
+        o.connect(g);g.connect(ctx.destination);
+        const s=baseTime+t;
+        g.gain.setValueAtTime(0,s);
+        g.gain.linearRampToValueAtTime(.22,s+.025);
+        g.gain.exponentialRampToValueAtTime(.001,s+.32);
+        o.start(s);o.stop(s+.4);
+        nodes.push(o);
+        // 倍音
+        const o2=ctx.createOscillator(),g2=ctx.createGain();
+        o2.type='sine';o2.frequency.value=f*2;
+        o2.connect(g2);g2.connect(ctx.destination);
+        g2.gain.setValueAtTime(0,s);
+        g2.gain.linearRampToValueAtTime(.06,s+.02);
+        g2.gain.exponentialRampToValueAtTime(.001,s+.2);
+        o2.start(s);o2.stop(s+.28);
+        nodes.push(o2);
+      });
+    }
+
+    const startTime=ctx.currentTime+.05;
+    playOnce(startTime);
+    const interval=setInterval(()=>{
+      if(stopped){clearInterval(interval);return;}
+      playOnce(ctx.currentTime+.05);
+    },totalLen*1000+100);
+
+    return ()=>{
+      stopped=true;
+      clearInterval(interval);
+      nodes.forEach(o=>{try{o.stop();}catch(e){}});
+      if(onStop)onStop();
+    };
+  }catch(e){
+    console.warn('audio',e);
+    return ()=>{};
+  }
+}
+
+/* ── Toast ── */
+function toast(msg){
+  const el=document.createElement('div');
+  el.className='toast';el.textContent=msg;
+  document.body.appendChild(el);
+  setTimeout(()=>{el.classList.add('out');el.addEventListener('animationend',()=>el.remove());},4000);
+}
+
+/* ── Create ── */
+function createTimer(){
+  if(timers.length>=MAX)return;
+  const id=nextId++;
+  const accent=ACCENTS[(id-1)%ACCENTS.length];
+  // デフォルト3分
+  timers.push({id,label:'',h:0,m:3,s:0,totalSec:0,remainSec:0,state:'idle',iid:null,accent,order:timers.length,stopSound:null,timerIdx:(id-1)%MELODIES.length});
+  buildCard(timers[timers.length-1]);
+  applyDOMOrder();
+  refreshUI();
+}
+
+/* ── Remove ── */
+function removeTimer(id){
+  const t=timers.find(x=>x.id===id);
+  if(t?.iid)clearInterval(t.iid);
+  if(t?.stopSound)t.stopSound();
+  timers=timers.filter(x=>x.id!==id);
+  const el=document.getElementById('c'+id);
+  if(el){Object.assign(el.style,{opacity:'0',transform:'scale(.96)',transition:'all .18s'});setTimeout(()=>el.remove(),180);}
+  refreshUI();
+}
+
+/* ── Sort ── */
+function doSort(mode){
+  sortMode=mode;
+  document.getElementById('sortCreated').classList.toggle('active',mode==='created');
+  document.getElementById('sortRemain').classList.toggle('active',mode==='remain');
+  applyDOMOrder();
+}
+function sortedTimers(){
+  const arr=[...timers];
+  if(sortMode==='remain'){
+    arr.sort((a,b)=>{
+      const ra=a.state==='idle'?Infinity:a.remainSec;
+      const rb=b.state==='idle'?Infinity:b.remainSec;
+      return ra!==rb?ra-rb:a.order-b.order;
+    });
+  }else{arr.sort((a,b)=>a.order-b.order);}
+  return arr;
+}
+function applyDOMOrder(){
+  const grid=document.getElementById('grid');
+  sortedTimers().forEach(t=>{const el=document.getElementById('c'+t.id);if(el)grid.appendChild(el);});
+  const em=document.getElementById('empty');
+  if(em)em.style.display=timers.length===0?'flex':'none';
+  if(em)em.style.flexDirection='column';
+  if(em)em.style.alignItems='center';
+}
+
+/* ── Build card ── */
+function buildCard(t){
+  const grid=document.getElementById('grid');
+  const card=document.createElement('div');
+  card.id='c'+t.id;card.className='card';
+  card.style.setProperty('--card-accent',t.accent);
+  card.setAttribute('draggable','true');
+
+  const chips=PRESETS.map(p=>`<button class="chip" onclick="applyLbl(${t.id},'${p}')">${p}</button>`).join('');
+
+  card.innerHTML=`
+    <div class="card-label-area">
+      <div class="bg-bar" id="bgbar-${t.id}"></div>
+      <div class="name-row">
+        <span class="drag-handle">⠿</span>
+        <input class="lbl-input" id="lbl-${t.id}" type="text" placeholder="何のタイマー？" maxlength="20"
+          oninput="timers.find(x=>x.id==${t.id}).label=this.value">
+        <button class="chips-toggle" id="ctoggle-${t.id}" onclick="toggleChips(${t.id})">補助</button>
+        <button class="rm-btn" onclick="removeTimer(${t.id})">✕</button>
+      </div>
+      <div class="chips-area" id="chips-${t.id}">
+        <div class="chips-scroll"><div class="chips-inner">${chips}</div></div>
+      </div>
+      <div class="disp-overlay" id="d-${t.id}">設定: 3分</div>
+      <button class="sound-stop" id="sstop-${t.id}" onclick="stopSound(${t.id})">⏹ 停止</button>
+    </div>
+    <div class="card-body">
+      <div class="setter-row">
+        <div class="ctrl" id="ctrl-${t.id}"></div>
+        <div class="setter">
+          ${mkSpinner(t.id,'h','時間',t.h)}
+          <span class="sep">:</span>
+          ${mkSpinner(t.id,'m','分',t.m)}
+          <span class="sep">:</span>
+          ${mkSpinner(t.id,'s','秒',t.s)}
+        </div>
+      </div>
+    </div>`;
+
+  ['h','m','s'].forEach(u=>{
+    bindSpin(card.querySelector(`#up-${u}-${t.id}`),t.id,u,+1);
+    bindSpin(card.querySelector(`#dn-${u}-${t.id}`),t.id,u,-1);
+  });
+  setupDrag(card,t.id);
+  grid.appendChild(card);
+  applyState(t.id);
+  setMeter(t.id,1);
+}
+
+/* ── Spinner ── */
+function mkSpinner(id,unit,label,val){
+  return `<div class="unit">
+    <div class="unit-wrap">
+      <div class="unit-lbl">${label}</div>
+      <div class="num-box" id="n-${unit}-${id}">${pad(val)}</div>
+    </div>
+    <div class="spin-col">
+      <button class="spin-btn up" id="up-${unit}-${id}">▲</button>
+      <button class="spin-btn dn" id="dn-${unit}-${id}">▼</button>
+    </div>
+  </div>`;
+}
+function spin(id,unit,delta){
+  const t=timers.find(x=>x.id===id);
+  if(!t||t.state!=='idle')return;
+  t[unit]=Math.max(0,Math.min(unit==='h'?9:59,t[unit]+delta));
+  const el=document.getElementById(`n-${unit}-${id}`);
+  if(el)el.textContent=pad(t[unit]);
+  updateDispIdle(id);
+}
+function bindSpin(btn,id,unit,delta){
+  let timer=null,iv=null;
+  const go=()=>{spin(id,unit,delta);timer=setTimeout(()=>{iv=setInterval(()=>spin(id,unit,delta),75);},380);};
+  const stop=()=>{clearTimeout(timer);clearInterval(iv);};
+  btn.addEventListener('pointerdown',e=>{e.preventDefault();go();});
+  btn.addEventListener('pointerup',stop);
+  btn.addEventListener('pointerleave',stop);
+  btn.addEventListener('pointercancel',stop);
+}
+
+/* ── Chips toggle ── */
+function toggleChips(id){
+  const area=document.getElementById('chips-'+id);
+  const btn=document.getElementById('ctoggle-'+id);
+  if(!area||!btn)return;
+  const open=area.classList.toggle('open');
+  btn.classList.toggle('open',open);
+  btn.textContent=open?'閉じる':'補助';
+}
+
+/* ── Drag & Drop ── */
+let dragId=null;
+function setupDrag(card,id){
+  card.addEventListener('dragstart',e=>{dragId=id;card.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+  card.addEventListener('dragend',()=>{card.classList.remove('dragging');document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));dragId=null;});
+  card.addEventListener('dragover',e=>{e.preventDefault();if(dragId===id)return;document.querySelectorAll('.card').forEach(c=>c.classList.remove('drag-over'));card.classList.add('drag-over');});
+  card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
+  card.addEventListener('drop',e=>{
+    e.preventDefault();card.classList.remove('drag-over');
+    if(dragId===null||dragId===id)return;
+    const fi=timers.findIndex(x=>x.id===dragId),ti=timers.findIndex(x=>x.id===id);
+    if(fi<0||ti<0)return;
+    const[moved]=timers.splice(fi,1);timers.splice(ti,0,moved);
+    timers.forEach((t,i)=>t.order=i);applyDOMOrder();
+  });
+}
+
+/* ── Timer control ── */
+function startTimer(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  if(t.state==='idle'||t.state==='finished'){
+    t.totalSec=t.h*3600+t.m*60+t.s;t.remainSec=t.totalSec;
+    if(t.totalSec<=0)return;
+  }
+  t.state='running';lockSpins(id,true);
+  if(t.iid)clearInterval(t.iid);
+  t.iid=setInterval(()=>tick(id),1000);
+  applyState(id);
+}
+function pauseTimer(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  t.state='paused';clearInterval(t.iid);t.iid=null;applyState(id);
+}
+function resetTimer(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  clearInterval(t.iid);t.iid=null;
+  if(t.stopSound){t.stopSound();t.stopSound=null;}
+  t.state='idle';t.remainSec=0;t.totalSec=0;
+  lockSpins(id,false);applyState(id);
+  setMeter(id,1);updateDispIdle(id);
+  const card=document.getElementById('c'+id);
+  if(card)card.classList.remove('sounding','finished');
+}
+
+function stopSound(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  if(t.stopSound){t.stopSound();t.stopSound=null;}
+  const card=document.getElementById('c'+id);
+  if(card)card.classList.remove('sounding');
+}
+
+function tick(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  t.remainSec=Math.max(0,t.remainSec-1);
+  const ratio=t.totalSec>0?t.remainSec/t.totalSec:0;
+  setMeter(id,ratio);setDisp(id,t.remainSec,false);
+  if(t.remainSec<=0){
+    t.state='finished';clearInterval(t.iid);t.iid=null;
+    applyState(id);setDisp(id,0,true);
+    finishTimer(id);
+  }
+}
+
+function finishTimer(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  toast(`「${t.label||'タイマー'}」が完了しました`);
+  // 完了エフェクト
+  const card=document.getElementById('c'+id);
+  if(card){
+    card.classList.remove('finished');
+    void card.offsetWidth;
+    card.classList.add('finished','sounding');
+  }
+  // 音を鳴らす（20秒）
+  const stop=playMelody(t.timerIdx,true,()=>{
+    if(card)card.classList.remove('sounding');
+  });
+  t.stopSound=stop;
+  // 20秒後に自動停止
+  setTimeout(()=>{
+    if(t.stopSound===stop){
+      stop();
+      t.stopSound=null;
+      if(card)card.classList.remove('sounding');
+    }
+  },SOUND_DURATION);
+}
+
+/* ── State render ── */
+function applyState(id){
+  const t=timers.find(x=>x.id===id);if(!t)return;
+  const card=document.getElementById('c'+id);
+  const ctrl=document.getElementById('ctrl-'+id);
+  if(!card||!ctrl)return;
+  if(t.state!=='finished'){
+    const cls='card'+(t.state==='running'?' running':'');
+    // finishedクラスは保持（エフェクト中）
+    if(!card.classList.contains('finished'))card.className=cls;
+    else card.className=cls+' finished'+(card.classList.contains('sounding')?' sounding':'');
+  }
+  const a=t.accent;
+  const ps=(lbl,fn)=>`<button class="btn btn-p" style="background:${a};border-color:${a}" onclick="${fn}">${lbl}</button>`;
+  if(t.state==='idle')
+    ctrl.innerHTML=ps('スタート',`startTimer(${id})`)+ghost('リセット',`resetTimer(${id})`);
+  else if(t.state==='running')
+    ctrl.innerHTML=`<button class="btn btn-pause" onclick="pauseTimer(${id})">一時停止</button>`+ghost('リセット',`resetTimer(${id})`);
+  else if(t.state==='paused')
+    ctrl.innerHTML=ps('再開',`startTimer(${id})`)+ghost('リセット',`resetTimer(${id})`);
+  else
+    ctrl.innerHTML=ps('もう一度',`resetTimer(${id});startTimer(${id})`)+ghost('リセット',`resetTimer(${id})`);
+}
+const ghost=(l,fn)=>`<button class="btn btn-g" onclick="${fn}">${l}</button>`;
+
+function lockSpins(id,lock){
+  ['h','m','s'].forEach(u=>{
+    ['up','dn'].forEach(d=>{const b=document.getElementById(`${d}-${u}-${id}`);if(b)b.disabled=lock;});
+    const nb=document.getElementById(`n-${u}-${id}`);if(nb)nb.classList.toggle('locked',lock);
+  });
+}
+
+/* ── Display ── */
+function setMeter(id,ratio){
+  const b=document.getElementById('bgbar-'+id);if(!b)return;
+  b.style.transform=`scaleX(${Math.max(0,ratio)})`;
+  b.style.background=ratio>.5?'#4a6741':ratio>.2?'#8a7355':'#a83228';
+}
+function setDisp(id,sec,done){
+  const el=document.getElementById('d-'+id);if(!el)return;
+  if(done){el.textContent='完了！';el.className='disp-overlay done';return;}
+  const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60;
+  el.textContent=h>0?`残り ${h}:${pad(m)}:${pad(s)}`:`残り ${pad(m)}:${pad(s)}`;
+  el.className='disp-overlay';
+}
+function updateDispIdle(id){
+  const t=timers.find(x=>x.id===id);if(!t||t.state!=='idle')return;
+  const el=document.getElementById('d-'+id);if(!el)return;
+  const total=t.h*3600+t.m*60+t.s;
+  const h=Math.floor(total/3600),m=Math.floor((total%3600)/60),s=total%60;
+  let txt='設定: ';
+  if(h>0)txt+=`${h}時間`;
+  if(m>0)txt+=`${m}分`;
+  if(s>0||(h===0&&m===0))txt+=`${s}秒`;
+  el.textContent=txt;el.className='disp-overlay';
+  setMeter(id,1);
+}
+function applyLbl(id,lbl){
+  const inp=document.getElementById('lbl-'+id);
+  const t=timers.find(x=>x.id===id);
+  if(inp&&t){inp.value=lbl;t.label=lbl;}
+  const area=document.getElementById('chips-'+id);
+  const btn=document.getElementById('ctoggle-'+id);
+  if(area&&area.classList.contains('open')){
+    area.classList.remove('open');
+    if(btn){btn.classList.remove('open');btn.textContent='補助';}
+  }
+}
+function pad(n){return String(n).padStart(2,'0');}
+
+function refreshUI(){
+  const n=timers.length;
+  document.getElementById('cnt').textContent=`${n} / ${MAX}`;
+  const em=document.getElementById('empty');
+  if(em)em.style.display=n===0?'flex':'none';
+}
+
+refreshUI();
+</script>
+</body>
+</html>

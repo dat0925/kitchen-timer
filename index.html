@@ -115,29 +115,31 @@
     }
     .card.running .bg-bar{opacity:.1;}
 
-    /* 残り時間を補助ボタン左にインライン表示 */
+    /* 残り時間：補助ボタン下部に右寄せ表示 */
     .disp-overlay{
       font-size:var(--fs-xs);font-weight:300;
       color:var(--sub);letter-spacing:-.01em;
-      white-space:nowrap;flex-shrink:0;
+      text-align:right;line-height:1.4;
+      padding:.05rem 0 .1rem;
+      position:relative;z-index:1;
     }
     .disp-overlay.done{color:var(--red);font-weight:500;}
 
-    /* ストップボタン（音が鳴ってる間） */
+    /* ストップボタン（音が鳴ってる間）— 他ボタンと色調統一 */
     .sound-stop{
       position:absolute;left:50%;top:50%;
       transform:translate(-50%,-50%);
       z-index:6;
-      background:rgba(46,40,34,.82);color:#fff;
-      border:none;border-radius:3px;
-      padding:.45rem 1rem;
+      background:var(--surface);color:var(--sub);
+      border:1px solid var(--border2);border-radius:2px;
+      padding:.38rem .9rem;
       font-family:'Noto Sans JP',sans-serif;font-size:var(--fs-xs);
-      font-weight:500;letter-spacing:.06em;cursor:pointer;
-      display:none;backdrop-filter:blur(2px);
-      transition:background .1s;
+      font-weight:500;letter-spacing:.05em;cursor:pointer;
+      display:none;
+      transition:all .12s;touch-action:manipulation;
       white-space:nowrap;
     }
-    .sound-stop:active{background:rgba(46,40,34,.95);}
+    .sound-stop:active{background:var(--divider);}
     .card.sounding .sound-stop{display:flex;align-items:center;gap:.3rem;}
 
     /* 名前行 */
@@ -209,12 +211,12 @@
     .btn-g{background:transparent;color:var(--sub);border-color:var(--border2);}
     .btn-g:active{background:var(--divider);}
 
-    /* ── Spinner: 数字 × 1.1倍、▲▼ × 1.1倍 ── */
-    .setter{display:flex;align-items:flex-end;gap:.22rem;flex:1;}
-    .unit{display:flex;align-items:flex-end;gap:5px;}
+    /* ── Spinner ── */
+    .setter{display:flex;align-items:flex-end;gap:10px;flex:1;}
+    .unit{display:flex;align-items:flex-end;gap:10px;}
+    .num-lbl-wrap{display:flex;align-items:flex-end;gap:2px;}
     .unit-wrap{display:flex;flex-direction:column;align-items:center;}
     .unit-lbl{font-size:var(--fs-lbl);color:var(--mute);letter-spacing:.1em;margin-bottom:.06rem;}
-    /* num-box: width 48px, height 44px × 1.3 = 57px */
     .num-box{
       width:48px;height:57px;
       background:#fff;border:1px solid var(--border);
@@ -222,10 +224,10 @@
       font-size:var(--fs-num);font-weight:300;letter-spacing:-.02em;
     }
     .num-box.locked{opacity:.4;}
-    /* spin-col: 幅33px × 1.2 = 40px, 高さ 57px */
+    /* spin-col: 幅40px × 1.2 = 48px */
     .spin-col{
       display:flex;flex-direction:column;
-      width:40px;height:57px;flex-shrink:0;
+      width:48px;height:57px;flex-shrink:0;
     }
     .spin-btn{
       flex:1;width:100%;background:var(--bg);
@@ -289,11 +291,12 @@
     @media(max-width:560px){
       #grid{grid-template-columns:1fr;}
       .card{border-right:none;border-bottom:2px solid var(--border);}
-      .num-box{width:42px;}
-      .spin-col{width:32px;}
+      .num-box{width:38px;}
+      .spin-col{width:30px;}
       .unit-lbl-inline{display:none;}
-      .btn{font-size:var(--fs-xxs);padding:.32rem .48rem;letter-spacing:.03em;}
-      .setter{gap:.15rem;}
+      .btn{font-size:var(--fs-xxs);padding:.32rem .44rem;letter-spacing:.03em;}
+      .setter{gap:6px;}
+      .unit{gap:6px;}
     }
   </style>
 </head>
@@ -404,6 +407,20 @@ function playMelody(timerIndex, loop, onStop){
   }
 }
 
+/* ── Tap sound ── */
+function playTap(freq=800,dur=0.04,vol=0.1){
+  try{
+    const ctx=getCtx();
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.type='sine';o.frequency.value=freq;
+    o.connect(g);g.connect(ctx.destination);
+    const t=ctx.currentTime;
+    g.gain.setValueAtTime(vol,t);
+    g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.start(t);o.stop(t+dur);
+  }catch(e){}
+}
+
 /* ── Toast ── */
 function toast(msg){
   const el=document.createElement('div');
@@ -415,10 +432,12 @@ function toast(msg){
 /* ── Create ── */
 function createTimer(){
   if(timers.length>=MAX)return;
+  playTap(660,.05,.12);
   const id=nextId++;
   const accent=ACCENTS[(id-1)%ACCENTS.length];
+  const label=`タイマー${timers.length+1}`;
   // デフォルト3分
-  timers.push({id,label:'',h:0,m:3,s:0,totalSec:0,remainSec:0,state:'idle',iid:null,accent,order:timers.length,stopSound:null,timerIdx:(id-1)%MELODIES.length});
+  timers.push({id,label,h:0,m:3,s:0,totalSec:0,remainSec:0,state:'idle',iid:null,accent,order:timers.length,stopSound:null,timerIdx:(id-1)%MELODIES.length});
   buildCard(timers[timers.length-1]);
   applyDOMOrder();
   refreshUI();
@@ -437,6 +456,7 @@ function removeTimer(id){
 
 /* ── Sort ── */
 function doSort(mode){
+  playTap(520,.04,.09);
   sortMode=mode;
   document.getElementById('sortCreated').classList.toggle('active',mode==='created');
   document.getElementById('sortRemain').classList.toggle('active',mode==='remain');
@@ -477,16 +497,16 @@ function buildCard(t){
       <div class="bg-bar" id="bgbar-${t.id}"></div>
       <div class="name-row">
         <span class="drag-handle">⠿</span>
-        <input class="lbl-input" id="lbl-${t.id}" type="text" placeholder="タイマー名を入力する" maxlength="20"
+        <input class="lbl-input" id="lbl-${t.id}" type="text" value="${t.label}" placeholder="タイマー名を入力する" maxlength="20"
           oninput="timers.find(x=>x.id==${t.id}).label=this.value">
-        <div class="disp-overlay" id="d-${t.id}">設定: 3分</div>
-        <button class="chips-toggle" id="ctoggle-${t.id}" onclick="toggleChips(${t.id})">補助</button>
-        <button class="rm-btn" onclick="removeTimer(${t.id})">✕</button>
+        <button class="chips-toggle" id="ctoggle-${t.id}" onclick="playTap(600,.04,.1);toggleChips(${t.id})">補助</button>
+        <button class="rm-btn" onclick="playTap(300,.05,.12);removeTimer(${t.id})">✕</button>
       </div>
+      <div class="disp-overlay" id="d-${t.id}">設定: 3分</div>
       <div class="chips-area" id="chips-${t.id}">
         <div class="chips-scroll"><div class="chips-inner">${chips}</div></div>
       </div>
-      <button class="sound-stop" id="sstop-${t.id}" onclick="stopSound(${t.id})">⏹ 停止</button>
+      <button class="sound-stop" id="sstop-${t.id}" onclick="playTap(440,.05,.1);stopSound(${t.id})">⏹ 停止</button>
     </div>
     <div class="card-body">
       <div class="setter-row">
@@ -512,12 +532,14 @@ function buildCard(t){
 /* ── Spinner ── */
 function mkSpinner(id,unit,label,val){
   return `<div class="unit">
-    <div class="num-box" id="n-${unit}-${id}">${pad(val)}</div>
+    <div class="num-lbl-wrap">
+      <div class="num-box" id="n-${unit}-${id}">${pad(val)}</div>
+      <span class="unit-lbl-inline">${label}</span>
+    </div>
     <div class="spin-col">
       <button class="spin-btn up" id="up-${unit}-${id}">▲</button>
       <button class="spin-btn dn" id="dn-${unit}-${id}">▼</button>
     </div>
-    <span class="unit-lbl-inline">${label}</span>
   </div>`;
 }
 function spin(id,unit,delta){
@@ -530,7 +552,7 @@ function spin(id,unit,delta){
 }
 function bindSpin(btn,id,unit,delta){
   let timer=null,iv=null;
-  const go=()=>{spin(id,unit,delta);timer=setTimeout(()=>{iv=setInterval(()=>spin(id,unit,delta),75);},380);};
+  const go=()=>{playTap(900,.03,.08);spin(id,unit,delta);timer=setTimeout(()=>{iv=setInterval(()=>{playTap(900,.03,.06);spin(id,unit,delta);},75);},380);};
   const stop=()=>{clearTimeout(timer);clearInterval(iv);};
   btn.addEventListener('pointerdown',e=>{e.preventDefault();go();});
   btn.addEventListener('pointerup',stop);
@@ -567,6 +589,7 @@ function setupDrag(card,id){
 
 /* ── Timer control ── */
 function startTimer(id){
+  playTap(660,.06,.13);
   const t=timers.find(x=>x.id===id);if(!t)return;
   if(t.state==='idle'||t.state==='finished'){
     t.totalSec=t.h*3600+t.m*60+t.s;t.remainSec=t.totalSec;
@@ -578,10 +601,12 @@ function startTimer(id){
   applyState(id);
 }
 function pauseTimer(id){
+  playTap(500,.05,.11);
   const t=timers.find(x=>x.id===id);if(!t)return;
   t.state='paused';clearInterval(t.iid);t.iid=null;applyState(id);
 }
 function resetTimer(id){
+  playTap(380,.06,.11);
   const t=timers.find(x=>x.id===id);if(!t)return;
   clearInterval(t.iid);t.iid=null;
   if(t.stopSound){t.stopSound();t.stopSound=null;}
@@ -694,6 +719,7 @@ function updateDispIdle(id){
   setMeter(id,1);
 }
 function applyLbl(id,lbl){
+  playTap(700,.04,.09);
   const inp=document.getElementById('lbl-'+id);
   const t=timers.find(x=>x.id===id);
   if(inp&&t){inp.value=lbl;t.label=lbl;}
